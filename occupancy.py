@@ -62,14 +62,26 @@ def _neg_log_lik(params, histories):
     return nll
 
 
-def fit_occupancy(histories) -> dict | None:
+def fit_occupancy(histories, trace: list = None) -> dict | None:
     """MLE of (psi, p) with 95% CIs from the inverse Hessian (observed
-    information). Returns None if the optimiser fails."""
+    information). Returns None if the optimiser fails.
+
+    If `trace` is a list, (negative log-likelihood, psi, p) is appended at
+    every optimizer step — used by the Live page to animate convergence.
+    """
     if len(histories) < 5:
         return None
+
+    def _callback(xk):
+        if trace is not None:
+            trace.append((_neg_log_lik(xk, histories),
+                          1 / (1 + np.exp(-xk[0])),
+                          1 / (1 + np.exp(-xk[1]))))
+
     res = minimize(_neg_log_lik, x0=np.array([0.0, 0.0]),
                    args=(histories,), method="BFGS",
-                   options={"gtol": 1e-4, "eps": 1e-6})
+                   options={"gtol": 1e-4, "eps": 1e-6},
+                   callback=_callback)
     if not res.success:
         return None
     psi = 1 / (1 + np.exp(-res.x[0]))

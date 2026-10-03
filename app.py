@@ -294,9 +294,65 @@ def page_health():
         st.caption("No tags yet.")
 
 
+def page_live():
+    import live_demo
+    st.title("Live demo — inference & model fitting")
+    st.caption("Two honest live demos: MegaDetector running real inference "
+               "on sample images, and the occupancy model being fitted by "
+               "maximum likelihood. Nothing here is pre-recorded; the "
+               "occupancy panel is model FITTING, not neural-network training.")
+
+    st.subheader("1 · Live MegaDetector classification")
+    st.caption(f"Confidence threshold {config.MEGADETECTOR_THRESHOLD}. "
+               "Precision/recall use the dataset's own labels as ground truth.")
+    n_img = st.slider("Images to classify live", 5, 30, 12)
+    if st.button("Run live classification", type="primary"):
+        paths = live_demo.sample_images(n_img)
+        if not paths:
+            st.warning("No sample images found — run triage.py / see README.")
+        else:
+            img_ph = st.empty()
+            stats_ph = st.empty()
+            chart_ph = st.empty()
+            with st.spinner("MegaDetector v5 running on CPU..."):
+                n_empty, prec, rec = live_demo.run_live_classification(
+                    paths, img_ph, stats_ph, chart_ph)
+            st.success(f"Done: {n_empty}/{len(paths)} classified empty "
+                       f"({n_empty / len(paths):.0%}). Final empty-class "
+                       f"precision {prec:.2f}, recall {rec:.2f}.")
+
+    st.divider()
+    st.subheader("2 · Live occupancy model fitting")
+    st.caption("Watch the optimizer converge to the maximum-likelihood "
+               "estimates of occupancy (psi) and detection probability (p). "
+               "This is numerical model fitting — JIVANA does not train "
+               "neural networks.")
+    df, rates, split, species, table, _ = get_analysis()
+    c1, c2, c3 = st.columns(3)
+    sp = c1.selectbox("Species", species, key="live_occ_sp")
+    grp = c2.selectbox("Disturbance group", ["low", "high"], key="live_grp")
+    delay = c3.slider("Animation speed (s/frame)", 0.02, 0.5, 0.12)
+    if st.button("Fit live", key="fit_live"):
+        chart_ph = st.empty()
+        result_ph = st.empty()
+        fit = live_demo.animate_occupancy_fit(df, sp, grp, chart_ph,
+                                              delay=delay)
+        if fit is None:
+            result_ph.warning("Not enough sites with data to fit this "
+                              "species/group.")
+        else:
+            lo, hi = fit["psi_ci"]; plo, phi = fit["p_ci"]
+            result_ph.success(
+                f"Converged after fitting {fit['n_sites']} sites: "
+                f"occupancy ψ = **{fit['psi']:.2f}** (95% CI {lo:.2f}–{hi:.2f}), "
+                f"detection p = **{fit['p']:.2f}** (95% CI {plo:.2f}–{phi:.2f}). "
+                "Occupancy = probability a site is used, accounting for "
+                "imperfect detection — not abundance.")
+
+
 PAGES = {"1. Overview": page_overview, "2. Triage": page_triage,
          "3. Activity shift": page_activity, "4. Patrol priority": page_priority,
-         "5. Health review": page_health}
+         "5. Health review": page_health, "6. Live demo": page_live}
 
 sidebar()
 choice = st.sidebar.radio("Pages", list(PAGES))
