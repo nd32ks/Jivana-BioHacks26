@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Data (downloaded separately — see README; the COCO JSON is ~1 GB)
+data/
+
+# OS
+.DS_Store
