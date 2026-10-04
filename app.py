@@ -23,10 +23,12 @@ import health_tags
 import load_data
 import occupancy
 import priority
+import theme
 from activity import analyse_all_species, analyse_species
 from disturbance import assign_groups, human_rate_per_location, split_locations
 
 st.set_page_config(page_title="JIVANA", layout="wide")
+theme.apply()
 
 HONESTY = """
 **What JIVANA claims**
@@ -90,13 +92,14 @@ def try_get_data():
 
 # ============================================================ pages =======
 def page_overview():
-    st.title("JIVANA — disturbance early-warning for camera traps")
+    st.markdown("<h1>Night shift,<br>spotted early.</h1>", unsafe_allow_html=True)
     st.markdown(
-        "JIVANA helps field biologists and park managers spot a **behavioural "
-        "warning signal**: when human activity rises, many wild species become "
-        "more nocturnal. This shift can appear **before** population declines — "
-        "so it is an early-warning proxy, not a diagnosis. Analyses update "
-        "**after each data collection** (when SD cards come in).")
+        "<p style='font-size:22px;color:#454745;max-width:900px'>JIVANA helps "
+        "field biologists and park managers spot a <b>behavioural warning "
+        "signal</b>: when human activity rises, wild species become more "
+        "nocturnal — often <b>before</b> populations decline. Analyses update "
+        "<b>after each data collection</b> (when SD cards come in).</p>",
+        unsafe_allow_html=True)
     df, rates, split, species = try_get_data()
     s = load_data.dataset_summary(df)
     c = st.columns(6)
@@ -124,8 +127,7 @@ def page_overview():
                          f"{tri['precision_empty']:.2f} / {tri['recall_empty']:.2f}")
         st.caption("Precision/recall use the dataset's own labels as ground truth.")
     st.divider()
-    with st.expander("What JIVANA does and does not claim"):
-        st.markdown(HONESTY)
+    theme.dark_card("What JIVANA does — and does not — claim", HONESTY)
 
 
 def page_triage():
@@ -184,18 +186,20 @@ def page_activity():
 
     dlo, dhi = res["delta_ci"]; nlo, nhi = res["noct_ci"]
     conf = res["confidence"]
-    conf_color = "#3fb950" if conf >= 67 else "#d29922" if conf >= 34 else "#f85149"
+    conf_color = theme.SPRUCE if conf >= 67 else "#b8860b" if conf >= 34 else theme.RED
     conf_label = "high" if conf >= 67 else "moderate" if conf >= 34 else "low"
+    flag_kind = "lime" if res["flag"] == "shifting toward night" else "linen"
     c = st.columns(4)
     c[0].metric("Overlap Δ (high vs low)",
                 f"{res['delta']:.2f}", f"95% CI {dlo:.2f}–{dhi:.2f}")
     c[1].metric("Nocturnality high / low",
                 f"{res['noct_high']:.0%} / {res['noct_low']:.0%}",
                 f"Δ {res['noct_diff']:+.1%} (95% CI {nlo:+.1%}–{nhi:+.1%})")
-    c[2].metric("Flag", res["flag"])
+    c[2].markdown(f"**Flag**  \n{theme.badge(res['flag'].upper(), flag_kind)}",
+                  unsafe_allow_html=True)
     c[3].markdown(f"**Confidence index**  \n"
-                  f"<span style='color:{conf_color};font-size:1.8em'>"
-                  f"{conf}/100</span> ({conf_label})",
+                  f"<span style='color:{conf_color};font-size:1.8em;font-weight:900'>"
+                  f"{conf}</span><span style='color:{conf_color}'>/100 ({conf_label})</span>",
                   unsafe_allow_html=True)
     st.caption("A species is flagged 'shifting toward night' only if the "
                "nocturnality difference is positive AND its 95% CI excludes zero. "
@@ -212,8 +216,8 @@ def page_activity():
     show = show[front + [c for c in show.columns if c not in front]]
 
     def _conf_style(v):
-        color = "#3fb950" if v >= 67 else "#d29922" if v >= 34 else "#f85149"
-        return f"color: {color}; font-weight: bold"
+        color = theme.SPRUCE if v >= 67 else "#b8860b" if v >= 34 else theme.RED
+        return f"color: {color}; font-weight: 700"
 
     show = show.style.map(_conf_style, subset=["confidence"])
     st.dataframe(show, use_container_width=True, hide_index=True)
@@ -296,27 +300,30 @@ def page_health():
 
 def page_live():
     import live_demo
-    st.title("Live demo — inference & model fitting")
+    st.markdown("<h1>Live demo</h1>", unsafe_allow_html=True)
     st.caption("Two honest live demos: MegaDetector running real inference "
                "on sample images, and the occupancy model being fitted by "
                "maximum likelihood. Nothing here is pre-recorded; the "
                "occupancy panel is model FITTING, not neural-network training.")
 
     st.subheader("1 · Live MegaDetector classification")
+    n_avail = len(live_demo.sample_images(10_000))
     st.caption(f"Confidence threshold {config.MEGADETECTOR_THRESHOLD}. "
-               "Precision/recall use the dataset's own labels as ground truth.")
-    n_img = st.slider("Images to classify live", 5, 30, 12)
+               f"{n_avail} sample images on disk. Precision/recall use the "
+               "dataset's own labels as ground truth.")
+    n_img = st.slider("Images to classify live", 5, max(30, min(1000, n_avail)),
+                      12)
     if st.button("Run live classification", type="primary"):
         paths = live_demo.sample_images(n_img)
         if not paths:
             st.warning("No sample images found — run triage.py / see README.")
         else:
-            img_ph = st.empty()
             stats_ph = st.empty()
+            gallery_ph = st.empty()
             chart_ph = st.empty()
             with st.spinner("MegaDetector v5 running on CPU..."):
                 n_empty, prec, rec = live_demo.run_live_classification(
-                    paths, img_ph, stats_ph, chart_ph)
+                    paths, stats_ph, chart_ph, gallery_ph)
             st.success(f"Done: {n_empty}/{len(paths)} classified empty "
                        f"({n_empty / len(paths):.0%}). Final empty-class "
                        f"precision {prec:.2f}, recall {rec:.2f}.")

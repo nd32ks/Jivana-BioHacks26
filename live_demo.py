@@ -31,9 +31,13 @@ def get_detector():
 
 
 def sample_images(n: int, seed: int = 7) -> list[Path]:
-    """Pick n sample images, preferring a mix of empty and non-empty."""
-    manifest_p = config.DATA_DIR / "sample_manifest.json"
-    if not manifest_p.exists():
+    """Pick n sample images, preferring a mix of empty and non-empty.
+    Uses sample_manifest_full.json (~1000 images) when available."""
+    for name in ("sample_manifest_full.json", "sample_manifest.json"):
+        manifest_p = config.DATA_DIR / name
+        if manifest_p.exists():
+            break
+    else:
         return []
     manifest = json.loads(manifest_p.read_text())
     rng = np.random.default_rng(seed)
@@ -61,21 +65,31 @@ def draw_boxes_pil(img: Image.Image, detections: list) -> Image.Image:
 
 
 def ground_truth() -> dict:
-    p = config.DATA_DIR / "sample_manifest.json"
-    if not p.exists():
-        return {}
-    return {m["file_name"].replace("/", "_"): m["label"]
-            for m in json.loads(p.read_text())}
+    for name in ("sample_manifest_full.json", "sample_manifest.json"):
+        p = config.DATA_DIR / name
+        if p.exists():
+            return {m["file_name"].replace("/", "_"): m["label"]
+                    for m in json.loads(p.read_text())}
+    return {}
 
 
-def run_live_classification(image_paths: list[Path], placeholder, stats_ph,
-                            chart_ph, delay: float = 0.0):
+def _thumb(p: Path, dets) -> Image.Image:
+    img = Image.open(p).convert("RGB")
+    img.thumbnail((220, 220))
+    return draw_boxes_pil(img, dets) if dets else img
+
+
+def run_live_classification(image_paths: list[Path], stats_ph, chart_ph,
+                            gallery_ph, delay: float = 0.0):
     """Classify images one at a time, updating the given Streamlit
-    placeholders. Returns (n_empty, precision, recall)."""
+    placeholders. Shows a rolling gallery of recently processed images.
+    Returns (n_empty, precision, recall)."""
     detector = get_detector()
     gt = ground_truth()
     n_empty = tp = fp = fn = 0
     nll_x, prec_y, rec_y = [], [], []
+    gallery: list[Image.Image] = []
+    n = len(image_paths)
     for i, p in enumerate(image_paths, 1):
         img = Image.open(p).convert("RGB")
         res = detector.generate_detections_one_image(
@@ -91,21 +105,20 @@ def run_live_classification(image_paths: list[Path], placeholder, stats_ph,
             tp += (label == "empty" and true_empty)
             fp += (label == "empty" and not true_empty)
             fn += (label != "empty" and true_empty)
-        shown = img.copy(); shown.thumbnail((700, 700))
-        placeholder.image(shown if not dets else
-                          draw_boxes_pil(shown, dets),
-                          caption=f"{p.name} — {label} "
-                                  f"({len(dets)} detection(s) >= "
-                                  f"{config.MEGADETECTOR_THRESHOLD})")
+        gallery.append(_thumb(p, dets))
+        if len(gallery) > 12:
+            gallery.pop(0)
+        cols = gallery_ph.columns(6)
+        for j, gimg in enumerate(gallery):
+            cols[j % 6].image(gimg, use_column_width=True)
         prec = tp / (tp + fp) if tp + fp else np.nan
         rec = tp / (tp + fn) if tp + fn else np.nan
-        stats_ph.write(f"**{i}/{len(image_paths)}** processed · "
-                       f"**{n_empty}** classified empty "
-                       f"({n_empty / i:.0%}) · empty-class precision "
-                       f"**{prec:.2f}** · recall **{rec:.2f}**")
+        stats_ph.progress(i / n, text=f"{i}/{n} processed · "
+                         f"{n_empty} classified empty ({n_empty / i:.0%}) · "
+                         f"empty-class precision {prec:.2f} · recall {rec:.2f}")
         nll_x.append(i)
         prec_y.append(prec); rec_y.append(rec)
-        if i >= 3:
+        if i >= 10 and (i % max(1, n // 100) == 0 or i == n):
             chart_ph.plotly_chart(
                 go.Figure([go.Scatter(x=nll_x, y=prec_y, name="precision"),
                            go.Scatter(x=nll_x, y=rec_y, name="recall")])
