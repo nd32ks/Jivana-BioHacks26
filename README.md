@@ -31,6 +31,29 @@ python triage.py          # MegaDetector v5 on the ~200 sample images
 streamlit run app.py
 ```
 
+## Deploying (Streamlit Community Cloud — free)
+
+Streamlit apps cannot run on Vercel (serverless only — no persistent
+Python server). They run natively on **Streamlit Community Cloud**:
+
+1. Push this repo to GitHub (already done: nd32ks/Jivana-BioHacks26).
+2. Go to https://share.streamlit.io → sign in with GitHub → **New app** →
+   pick the repo, main branch, entry point `app.py` → Deploy.
+3. On first boot the app downloads the SWG metadata itself via
+   `download_data.py` (~59 MB download, ~1 GB on disk) — no data needs to
+   be in the repo.
+
+**Honest resource caveats for the free tier:**
+- The full 1 GB JSON parse peaks around 2–3 GB RAM; the free tier gives
+  ~1 GB, so the Activity/Priority pages may be OOM-killed on first load.
+  For a reliable demo, subset the JSON first (keep ~200 locations) or run
+  locally, where it is verified working.
+- The Triage and Live-demo image pages need `data/sample_images/`; with
+  `SKIP_IMAGES=1` they show friendly "no images" messages instead.
+- `requirements.txt` includes PyTorch (~2 GB install) — first build takes
+  ~10–15 min. The analysis pages work without the detector; only the
+  Triage/Live pages need it.
+
 ## What we actually downloaded (verified 2026-10-03)
 
 - Metadata: `https://lilawildlife.blob.core.windows.net/lila-wildlife/swg-camera-traps/swg_camera_traps.zip`

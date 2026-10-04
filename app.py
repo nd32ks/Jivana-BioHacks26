@@ -30,6 +30,15 @@ from disturbance import assign_groups, human_rate_per_location, split_locations
 st.set_page_config(page_title="JIVANA", layout="wide")
 theme.apply()
 
+# --- cloud bootstrap: download the dataset on first run -------------------
+if not config.COCO_JSON_PATH.exists():
+    with st.spinner("First run: downloading the SWG dataset (~1 GB, one-time)..."):
+        import download_data
+        if download_data.main() != 0:
+            st.error("Dataset download failed. Run `python download_data.py` "
+                     "manually or follow the README.")
+            st.stop()
+
 HONESTY = """
 **What JIVANA claims**
 - Species may shift activity toward night-time when human activity rises;
